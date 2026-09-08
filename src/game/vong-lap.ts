@@ -86,6 +86,21 @@ export class VongLapGame {
   /** Ép chết ngay — chỉ dùng trong phép kiểm, không có nút nào gọi tới. */
   epChet(): void { if (this.pha !== 'chet') this.chet() }
 
+  /** CÒN BAO NHIÊU MILI GIÂY NỮA TỚI THỜI ĐIỂM NHẢ TỐI ƯU. Móc chỉ để ĐO —
+   * dùng chứng minh "nhả đúng lúc là ăn điểm" trong chính vòng lặp thật, chứ
+   * không phải chỉ đúng trên công thức. Không có nút nào trong game gọi tới. */
+  msToiToiUu(): number {
+    if (this.pha !== 'quay') return Infinity
+    const g = gocVongKeTiep(this.chiSo)
+    // Nhả tối ưu khi D·cos(θ−φ) = R. Có HAI nghiệm ±acos(R/D); chỉ một nghiệm
+    // cho đường bay hướng VỀ vòng đích, vì bay tới đích cần chieu·sin(θ−φ) < 0.
+    const lech = Math.acos(Math.min(1, this.m.banKinh / this.m.khoangCach))
+    const dich = g - lech * this.chieu
+    let d = (dich - this.goc) * this.chieu
+    d = ((d % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
+    return (d / this.m.tocDoQuay) * 1000
+  }
+
   /** MỘT CHẠM: đang quay thì nhả, đã chết thì vào ván mới ngay — không màn trung gian. */
   cham(): void {
     this.am.moKhoa()

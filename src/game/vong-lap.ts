@@ -5,9 +5,9 @@
 // ba mốc: chết, phá kỷ lục, mời đặt biệt danh.
 import { G, mucDo, gocVongKeTiep, chieuQuay, type MucDo } from './cau-hinh'
 import { AmThanh } from './am-thanh'
+import { banHat, nhichHat, lechRung, DOI_HAT, type Hat } from './hieu-ung'
 
 type Pha = 'quay' | 'bay' | 'chet'
-interface Hat { x: number; y: number; vx: number; vy: number; doi: number }
 
 const MAU_NEN = '#0b0f1a'
 const MAU_VONG = '#2c3a55'
@@ -79,6 +79,13 @@ export class VongLapGame {
 
   huy(): void { this.dungLai = true; cancelAnimationFrame(this.raf) }
 
+  /** Móc chỉ để ĐO, không có tác dụng phụ. Dùng cho phép kiểm "chết → ván mới
+   * đúng 1 chạm và ≤ 400 ms" (GAME-QUY-DAO.md mục 8). */
+  get trangThai(): { pha: Pha; diem: number } { return { pha: this.pha, diem: this.diem } }
+
+  /** Ép chết ngay — chỉ dùng trong phép kiểm, không có nút nào gọi tới. */
+  epChet(): void { if (this.pha !== 'chet') this.chet() }
+
   /** MỘT CHẠM: đang quay thì nhả, đã chết thì vào ván mới ngay — không màn trung gian. */
   cham(): void {
     this.am.moKhoa()
@@ -129,8 +136,7 @@ export class VongLapGame {
   private capNhat(dt: number): void {
     if (this.dongBang > 0) { this.dongBang -= dt * 1000; return }
     if (this.rung > 0) this.rung = Math.max(0, this.rung - dt * 1000)
-    for (const h of this.hat) { h.x += h.vx * dt; h.y += h.vy * dt; h.doi -= dt; h.vx *= 0.94; h.vy *= 0.94 }
-    this.hat = this.hat.filter((h) => h.doi > 0)
+    this.hat = nhichHat(this.hat, dt)
 
     if (this.pha === 'quay') {
       this.goc += this.m.tocDoQuay * this.chieu * dt
@@ -160,7 +166,7 @@ export class VongLapGame {
     this.am.trung(this.combo, hoanHao)
     this.rung = Math.min(G.RUNG_MAN_TOI_DA_MS, hoanHao ? 120 : 70)
     this.dongBang = G.DONG_BANG_MS
-    this.banHat(hoanHao ? 18 : 10)
+    this.hat.push(...banHat(this.p.x, this.p.y, hoanHao ? 18 : 10))
 
     this.chiSo += 1
     this.m = mucDo(this.diem)
@@ -169,14 +175,6 @@ export class VongLapGame {
     this.goc = Math.atan2(this.p.y - this.c0.y, this.p.x - this.c0.x)
     this.chieu = chieuQuay(this.chiSo)
     this.pha = 'quay'
-  }
-
-  private banHat(n: number): void {
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + Math.random() * 0.3   // chỉ ảnh hưởng hạt, không ảnh hưởng thắng thua
-      const t = 22 + Math.random() * 26
-      this.hat.push({ x: this.p.x, y: this.p.y, vx: Math.cos(a) * t, vy: Math.sin(a) * t, doi: 0.45 })
-    }
   }
 
   private chet(): void {
@@ -195,9 +193,8 @@ export class VongLapGame {
     c.fillStyle = MAU_NEN
     c.fillRect(0, 0, w, h)
 
-    const rx = this.rung > 0 ? (Math.random() - 0.5) * (this.rung / 30) : 0
-    const ry = this.rung > 0 ? (Math.random() - 0.5) * (this.rung / 30) : 0
-    c.setTransform(this.tiLe, 0, 0, this.tiLe, w / 2 - this.cam.x * this.tiLe + rx, h * 0.62 - this.cam.y * this.tiLe + ry)
+    const r = lechRung(this.rung)
+    c.setTransform(this.tiLe, 0, 0, this.tiLe, w / 2 - this.cam.x * this.tiLe + r.x, h * 0.62 - this.cam.y * this.tiLe + r.y)
 
     const vong = (cx: number, cy: number, r: number, mau: string, day: number) => {
       c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2)
@@ -207,7 +204,7 @@ export class VongLapGame {
     vong(this.c1.x, this.c1.y, this.m.banKinh, this.dichHong && this.pha !== 'quay' ? MAU_XAM : MAU_DICH, 2.2)
 
     for (const hat of this.hat) {
-      c.globalAlpha = Math.max(0, hat.doi / 0.45)
+      c.globalAlpha = Math.max(0, hat.doi / DOI_HAT)
       c.fillStyle = MAU_DICH
       c.fillRect(hat.x - 0.7, hat.y - 0.7, 1.4, 1.4)
     }

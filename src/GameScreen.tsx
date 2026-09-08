@@ -9,9 +9,23 @@ import { dungBang, type BangXepHang, type NguoiChoi } from './game/bang-xep-hang
 import {
   chuanHoaBietDanh, docBanGhi, ghiBanGhi, ghiNhanVan, khoaTuan, type BanGhiGame,
 } from './game/luu-tru'
+import { docCauHinh, guiDiem, layBang, maMay } from './game/may-chu'
 
 /** Đếm số lần React dựng lại — chỉ để phép kiểm đọc, không hiện ra màn. */
 export const demRender = { so: 0 }
+
+/** Đẩy hàng đợi điểm lên máy chủ. Mất mạng thì để nguyên, lần sau gửi tiếp. */
+async function dayHangDoiCua(b: BanGhiGame, ghi: (x: BanGhiGame) => void): Promise<void> {
+  if (!b.hangDoi.length || !b.bietDanh) return
+  const { scriptUrl } = await docCauHinh(import.meta.env.BASE_URL)
+  if (!scriptUrl) return
+  const conLai: BanGhiGame['hangDoi'] = []
+  for (const m of b.hangDoi) {
+    const xong = await guiDiem(scriptUrl, maMay(), b.bietDanh, m.diem)
+    if (!xong) conLai.push(m)
+  }
+  if (conLai.length !== b.hangDoi.length) ghi({ ...b, hangDoi: conLai })
+}
 
 export default function GameScreen() {
   demRender.so += 1
@@ -35,6 +49,7 @@ export default function GameScreen() {
     }
     setKetThuc(kq)
     if (r.moiBietDanh) setHoiTen(true)
+    void dayHangDoi()
   }, [])
 
   useEffect(() => {
@@ -50,6 +65,9 @@ export default function GameScreen() {
       if (ten2 === 'game:chet') xongVan(chiTiet as KetThuc)
     })
     game.current = g
+    // Móc đo cho phép kiểm mục 8. Chỉ đọc, không đổi gì trong game.
+    ;(window as unknown as { __game?: VongLapGame; __demRender?: typeof demRender }).__game = g
+    ;(window as unknown as { __demRender?: typeof demRender }).__demRender = demRender
     g.batDau()
     const cham = (e: Event) => { e.preventDefault(); setKetThuc(null); g.cham() }
     el.addEventListener('pointerdown', cham)
@@ -57,19 +75,29 @@ export default function GameScreen() {
     return () => { el.removeEventListener('pointerdown', cham); window.removeEventListener('resize', chinhCo); g.huy() }
   }, [xongVan])
 
+  const dayHangDoi = useCallback(async () => {
+    await dayHangDoiCua(banGhi.current, (x) => { banGhi.current = x; ghiBanGhi(x) })
+  }, [])
+
   const luuTen = () => {
     const t = chuanHoaBietDanh(ten)
     if (!t) return
-    banGhi.current = { ...banGhi.current, bietDanh: t }
+    // ĐẶT TÊN KHÔNG ĐỘNG TỚI KỶ LỤC. Kỷ lục chơi thử đi thẳng vào hàng đợi.
+    const b = banGhi.current
+    const hangDoi = b.kyLucTuan > 0 ? [...b.hangDoi, { tuan: b.tuan, diem: b.kyLucTuan }] : b.hangDoi
+    banGhi.current = { ...b, bietDanh: t, hangDoi }
     ghiBanGhi(banGhi.current)
     setHoiTen(false)
+    void dayHangDoi()
   }
 
-  const moBang = () => {
-    // Chưa nối máy chủ: dựng bảng từ đúng những gì máy này có.
-    const ds: NguoiChoi[] = banGhi.current.bietDanh
+  const moBang = async () => {
+    const { scriptUrl } = await docCauHinh(import.meta.env.BASE_URL)
+    const tuMayChu = await layBang(scriptUrl, maMay())
+    // Chưa dán link máy chủ, hoặc mất mạng: bảng chỉ có mình em, vẫn mở được.
+    const ds: NguoiChoi[] = tuMayChu ?? (banGhi.current.bietDanh
       ? [{ bietDanh: banGhi.current.bietDanh, diem: banGhi.current.kyLucTuan, laToi: true }]
-      : []
+      : [])
     setBang(dungBang(ds))
   }
 
